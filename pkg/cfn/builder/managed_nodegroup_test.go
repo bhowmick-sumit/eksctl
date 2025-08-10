@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"testing"
 
-	"goformation/v4"
-	gfneks "goformation/v4/cloudformation/eks"
-	gfnt "goformation/v4/cloudformation/types"
+	"github.com/weaveworks/eksctl/pkg/goformation"
+	gfneks "github.com/weaveworks/eksctl/pkg/goformation/cloudformation/eks"
+	gfnt "github.com/weaveworks/eksctl/pkg/goformation/cloudformation/types"
 
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/stretchr/testify/require"
@@ -31,7 +31,7 @@ func TestManagedPolicyResources(t *testing.T) {
 		description             string
 	}{
 		{
-			expectedManagedPolicies: makePartitionedPolicies("AmazonEKSWorkerNodePolicy", "AmazonEKS_CNI_Policy", "AmazonEC2ContainerRegistryReadOnly", "AmazonSSMManagedInstanceCore"),
+			expectedManagedPolicies: makePartitionedPolicies("AmazonEKSWorkerNodePolicy", "AmazonEKS_CNI_Policy", "AmazonEC2ContainerRegistryPullOnly", "AmazonSSMManagedInstanceCore"),
 			description:             "Default policies",
 		},
 		{
@@ -39,7 +39,7 @@ func TestManagedPolicyResources(t *testing.T) {
 				ImageBuilder: api.Enabled(),
 			},
 			expectedManagedPolicies: makePartitionedPolicies("AmazonEKSWorkerNodePolicy", "AmazonEKS_CNI_Policy",
-				"AmazonEC2ContainerRegistryReadOnly", "AmazonEC2ContainerRegistryPowerUser", "AmazonSSMManagedInstanceCore"),
+				"AmazonEC2ContainerRegistryPullOnly", "AmazonEC2ContainerRegistryPowerUser", "AmazonSSMManagedInstanceCore"),
 			description: "ImageBuilder enabled",
 		},
 		{
@@ -47,7 +47,7 @@ func TestManagedPolicyResources(t *testing.T) {
 				CloudWatch: api.Enabled(),
 			},
 			expectedManagedPolicies: makePartitionedPolicies("AmazonEKSWorkerNodePolicy", "AmazonEKS_CNI_Policy",
-				"AmazonEC2ContainerRegistryReadOnly", "AmazonSSMManagedInstanceCore", "CloudWatchAgentServerPolicy"),
+				"AmazonEC2ContainerRegistryPullOnly", "AmazonSSMManagedInstanceCore", "CloudWatchAgentServerPolicy"),
 			description: "CloudWatch enabled",
 		},
 		{
@@ -55,7 +55,7 @@ func TestManagedPolicyResources(t *testing.T) {
 				AutoScaler: api.Enabled(),
 			},
 			expectedNewPolicies:     []string{"PolicyAutoScaling"},
-			expectedManagedPolicies: makePartitionedPolicies("AmazonEKSWorkerNodePolicy", "AmazonEKS_CNI_Policy", "AmazonEC2ContainerRegistryReadOnly", "AmazonSSMManagedInstanceCore"),
+			expectedManagedPolicies: makePartitionedPolicies("AmazonEKSWorkerNodePolicy", "AmazonEKS_CNI_Policy", "AmazonEC2ContainerRegistryPullOnly", "AmazonSSMManagedInstanceCore"),
 			description:             "AutoScaler enabled",
 		},
 		{
@@ -67,7 +67,7 @@ func TestManagedPolicyResources(t *testing.T) {
 				"Resource": "*",
 			}),
 			expectedNewPolicies:     []string{"Policy1"},
-			expectedManagedPolicies: makePartitionedPolicies("AmazonEKSWorkerNodePolicy", "AmazonEKS_CNI_Policy", "AmazonEC2ContainerRegistryReadOnly", "AmazonSSMManagedInstanceCore"),
+			expectedManagedPolicies: makePartitionedPolicies("AmazonEKSWorkerNodePolicy", "AmazonEKS_CNI_Policy", "AmazonEC2ContainerRegistryPullOnly", "AmazonSSMManagedInstanceCore"),
 			description:             "Custom inline policies",
 		},
 		{
@@ -107,7 +107,8 @@ func TestManagedPolicyResources(t *testing.T) {
 			clusterConfig := api.NewClusterConfig()
 
 			ng := api.NewManagedNodeGroup()
-			api.SetManagedNodeGroupDefaults(ng, clusterConfig.Metadata, false)
+			err := api.SetManagedNodeGroupDefaults(ng, clusterConfig.Metadata, false)
+			require.NoError(err)
 			ng.IAM.WithAddonPolicies = tt.addons
 			ng.IAM.AttachPolicy = tt.attachPolicy
 			ng.IAM.AttachPolicyARNs = prefixPolicies(tt.attachPolicyARNs...)
@@ -123,7 +124,7 @@ func TestManagedPolicyResources(t *testing.T) {
 				[]string{}, // local zones
 				[]ec2types.InstanceType{api.DefaultNodeType})
 			stack := builder.NewManagedNodeGroup(p.EC2(), clusterConfig, ng, nil, bootstrapper, false, fakeVPCImporter)
-			err := stack.AddAllResources(context.Background())
+			err = stack.AddAllResources(context.Background())
 			require.Nil(err)
 
 			bytes, err := stack.RenderJSON()
@@ -206,7 +207,8 @@ func TestManagedNodeRole(t *testing.T) {
 			require := require.New(t)
 			clusterConfig := api.NewClusterConfig()
 			clusterConfig.Status = &api.ClusterStatus{}
-			api.SetManagedNodeGroupDefaults(tt.nodeGroup, clusterConfig.Metadata, false)
+			err := api.SetManagedNodeGroupDefaults(tt.nodeGroup, clusterConfig.Metadata, false)
+			require.NoError(err)
 			p := mockprovider.NewMockProvider()
 			fakeVPCImporter := new(vpcfakes.FakeImporter)
 			bootstrapper, err := nodebootstrap.NewManagedBootstrapper(clusterConfig, tt.nodeGroup)

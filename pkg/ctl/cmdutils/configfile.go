@@ -2,16 +2,15 @@ package cmdutils
 
 import (
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"io"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 
-	"golang.org/x/exp/slices"
-
 	"github.com/kris-nova/logger"
-	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -118,7 +117,7 @@ func (l *commonClusterConfigLoader) Load() error {
 
 	if l.ClusterConfigFile == "" {
 		if flagName, found := findChangedFlag(l.CobraCommand, sets.List(l.flagsIncompatibleWithoutConfigFile)); found {
-			return errors.Errorf("cannot use --%s unless a config file is specified via --config-file/-f", flagName)
+			return fmt.Errorf("cannot use --%s unless a config file is specified via --config-file/-f", flagName)
 		}
 		return l.validateWithoutConfigFile()
 	}
@@ -318,8 +317,9 @@ func NewCreateClusterLoader(cmd *Cmd, ngFilter *filter.NodeGroupFilter, ng *api.
 				return errors.New("creation of managed or self-managed nodegroups is not supported during cluster creation " +
 					"when Auto Mode is enabled; please create them post cluster creation using `eksctl create nodegroup`" +
 					" after creating core networking addons in the cluster")
-			}
-			if api.HasDefaultAddons(clusterConfig.Addons) {
+			} else if len(clusterConfig.FargateProfiles) == 0 && clusterConfig.RemoteNetworkConfig == nil &&
+				api.HasDefaultNonAutoAddon(clusterConfig.Addons) {
+				// Only an error if fargate profiles and hybrid nodes (remote network config) are not set/defined
 				return errors.New("core networking addons are not required on a cluster using Auto Mode; " +
 					"if you still wish to create them, use `eksctl create addon` post cluster creation")
 			}
@@ -485,9 +485,9 @@ func validateDryRunOptions(cmd *cobra.Command, incompatibleFlags []string) error
 	return nil
 }
 
-// validateBareCluster validates a cluster for unsupported fields if VPC CNI is disabled.
+// validateBareCluster validates a cluster for unsupported fields if VPC CNI and Auto Mode is disabled.
 func validateBareCluster(clusterConfig *api.ClusterConfig) error {
-	if !clusterConfig.AddonsConfig.DisableDefaultAddons || slices.ContainsFunc(clusterConfig.Addons, func(addon *api.Addon) bool {
+	if !clusterConfig.AddonsConfig.DisableDefaultAddons || clusterConfig.IsAutoModeEnabled() || slices.ContainsFunc(clusterConfig.Addons, func(addon *api.Addon) bool {
 		return addon.Name == api.VPCCNIAddon
 	}) {
 		return nil
@@ -495,8 +495,8 @@ func validateBareCluster(clusterConfig *api.ClusterConfig) error {
 	if clusterConfig.HasNodes() || clusterConfig.IsFargateEnabled() || clusterConfig.Karpenter != nil || clusterConfig.HasGitOpsFluxConfigured() ||
 		(clusterConfig.IAM != nil && ((len(clusterConfig.IAM.ServiceAccounts) > 0) || len(clusterConfig.IAM.PodIdentityAssociations) > 0)) {
 		return errors.New("fields nodeGroups, managedNodeGroups, fargateProfiles, karpenter, gitops, iam.serviceAccounts, " +
-			"and iam.podIdentityAssociations are not supported during cluster creation in a cluster without VPC CNI; please remove these fields " +
-			"and add them back after cluster creation is successful")
+			"and iam.podIdentityAssociations are not supported during cluster creation in a cluster without VPC CNI if Auto Mode is disabled; " +
+			"please remove these fields and add them back after cluster creation is successful")
 	}
 	return nil
 }
@@ -629,7 +629,7 @@ func validateManagedNGFlags(cmd *cobra.Command, managed bool) error {
 	}
 	flagsValidOnlyWithMNG := []string{"spot", "enable-node-repair", "instance-types"}
 	if flagName, found := findChangedFlag(cmd, flagsValidOnlyWithMNG); found {
-		return errors.Errorf("--%s is only valid with managed nodegroups (--managed)", flagName)
+		return fmt.Errorf("--%s is only valid with managed nodegroups (--managed)", flagName)
 	}
 	return nil
 }
@@ -674,6 +674,9 @@ func normalizeBaseNodeGroup(np api.NodePool, cmd *cobra.Command) {
 	flags := cmd.Flags()
 	if !flags.Changed("instance-selector-gpus") {
 		ng.InstanceSelector.GPUs = nil
+	}
+	if !flags.Changed("instance-selector-neuron-devices") {
+		ng.InstanceSelector.NeuronDevices = nil
 	}
 	if !flags.Changed("enable-ssm") {
 		ng.SSH.EnableSSM = nil

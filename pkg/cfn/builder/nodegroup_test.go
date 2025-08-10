@@ -14,7 +14,7 @@ import (
 
 	"github.com/weaveworks/eksctl/pkg/testutils/mockprovider"
 
-	gfnt "goformation/v4/cloudformation/types"
+	gfnt "github.com/weaveworks/eksctl/pkg/goformation/cloudformation/types"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -301,9 +301,9 @@ var _ = Describe("Unmanaged NodeGroup Template Builder", func() {
 					ng.IAM.AttachPolicyARNs = []string{"arn:aws:iam::1234567890:role/foo"}
 				})
 
-				It("adds the provided policy and the AmazonEC2ContainerRegistryReadOnly policy", func() {
+				It("adds the provided policy and the AmazonEC2ContainerRegistryPullOnly policy", func() {
 					Expect(ngTemplate.Resources["NodeInstanceRole"].Properties.ManagedPolicyArns).To(HaveLen(2))
-					Expect(ngTemplate.Resources["NodeInstanceRole"].Properties.ManagedPolicyArns).To(ContainElement(makePolicyARNRef("AmazonEC2ContainerRegistryReadOnly")))
+					Expect(ngTemplate.Resources["NodeInstanceRole"].Properties.ManagedPolicyArns).To(ContainElement(makePolicyARNRef("AmazonEC2ContainerRegistryPullOnly")))
 					Expect(ngTemplate.Resources["NodeInstanceRole"].Properties.ManagedPolicyArns).To(ContainElement("arn:aws:iam::1234567890:role/foo"))
 				})
 
@@ -312,7 +312,7 @@ var _ = Describe("Unmanaged NodeGroup Template Builder", func() {
 						ng.IAM.AttachPolicyARNs = []string{"foo"}
 					})
 
-					It("adds the provided policy and the AmazonEC2ContainerRegistryReadOnly policy", func() {
+					It("adds the provided policy and the AmazonEC2ContainerRegistryPullOnly policy", func() {
 						Expect(addErr).To(MatchError("arn: invalid prefix"))
 					})
 				})
@@ -326,7 +326,7 @@ var _ = Describe("Unmanaged NodeGroup Template Builder", func() {
 				It("adds the default policies to the role", func() {
 					Expect(ngTemplate.Resources["NodeInstanceRole"].Properties.ManagedPolicyArns).To(HaveLen(4))
 
-					Expect(ngTemplate.Resources["NodeInstanceRole"].Properties.ManagedPolicyArns).To(ContainElement(makePolicyARNRef("AmazonEC2ContainerRegistryReadOnly")))
+					Expect(ngTemplate.Resources["NodeInstanceRole"].Properties.ManagedPolicyArns).To(ContainElement(makePolicyARNRef("AmazonEC2ContainerRegistryPullOnly")))
 					Expect(ngTemplate.Resources["NodeInstanceRole"].Properties.ManagedPolicyArns).To(ContainElement(makePolicyARNRef("AmazonEKSWorkerNodePolicy")))
 					Expect(ngTemplate.Resources["NodeInstanceRole"].Properties.ManagedPolicyArns).To(ContainElement(makePolicyARNRef("AmazonEKS_CNI_Policy")))
 					Expect(ngTemplate.Resources["NodeInstanceRole"].Properties.ManagedPolicyArns).To(ContainElement(makePolicyARNRef("AmazonEKS_CNI_Policy")))
@@ -467,11 +467,9 @@ var _ = Describe("Unmanaged NodeGroup Template Builder", func() {
 					ng.IAM.WithAddonPolicies.EBS = aws.Bool(true)
 				})
 
-				It("adds PolicyEBS to the role", func() {
-					Expect(ngTemplate.Resources).To(HaveKey("PolicyEBS"))
-
-					Expect(ngTemplate.Resources["PolicyEBS"].Properties.Roles).To(HaveLen(1))
-					Expect(isRefTo(ngTemplate.Resources["PolicyEBS"].Properties.Roles[0], "NodeInstanceRole")).To(BeTrue())
+				It("adds the AmazonEBSCSIDriverPolicy managed policy to the role", func() {
+					Expect(ngTemplate.Resources["NodeInstanceRole"].Properties.ManagedPolicyArns).To(HaveLen(5))
+					Expect(ngTemplate.Resources["NodeInstanceRole"].Properties.ManagedPolicyArns).To(ContainElement(makePolicyARNRef("service-role/AmazonEBSCSIDriverPolicy")))
 				})
 			})
 
@@ -1352,6 +1350,17 @@ var _ = Describe("Unmanaged NodeGroup Template Builder", func() {
 				It("should not add egress rules", func() {
 					Expect(ngTemplate.Resources).NotTo(HaveKey("EgressInterCluster"))
 					Expect(ngTemplate.Resources).NotTo(HaveKey("EgressInterClusterAPI"))
+				})
+			})
+
+			Context("ng.EnclaveEnabled is set", func() {
+				BeforeEach(func() {
+					ng.EnclaveEnabled = aws.Bool(true)
+				})
+
+				It("enables the value on the launch template", func() {
+					properties := ngTemplate.Resources["NodeGroupLaunchTemplate"].Properties
+					Expect(properties.LaunchTemplateData.EnclaveOptions.Enabled).To(Equal(aws.Bool(true)))
 				})
 			})
 		})

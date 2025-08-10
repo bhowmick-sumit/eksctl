@@ -500,54 +500,6 @@ var _ = Describe("(Integration) Create, Get, Scale & Delete", func() {
 		})
 	})
 
-	Context("configuring K8s API", Serial, Ordered, func() {
-		var (
-			k8sAPICall func() error
-		)
-
-		BeforeAll(func() {
-			cfg := makeClusterConfig()
-
-			ctl, err := eks.New(context.TODO(), &api.ProviderConfig{Region: params.Region}, cfg)
-			Expect(err).NotTo(HaveOccurred())
-
-			err = ctl.RefreshClusterStatus(context.Background(), cfg)
-			Expect(err).ShouldNot(HaveOccurred())
-
-			clientSet, err := ctl.NewStdClientSet(cfg)
-			Expect(err).ShouldNot(HaveOccurred())
-
-			k8sAPICall = func() error {
-				_, err = clientSet.CoreV1().ServiceAccounts(metav1.NamespaceDefault).List(context.TODO(), metav1.ListOptions{})
-				return err
-			}
-		})
-
-		It("should have public access by default", func() {
-			Expect(k8sAPICall()).ShouldNot(HaveOccurred())
-		})
-
-		It("should disable public access", func() {
-			Expect(params.EksctlUtilsCmd.WithArgs(
-				"set-public-access-cidrs",
-				"--cluster", params.ClusterName,
-				"1.1.1.1/32,2.2.2.0/24",
-				"--approve",
-			)).To(RunSuccessfully())
-			Eventually(k8sAPICall, "5m", "20s").Should(HaveOccurred())
-		})
-
-		It("should re-enable public access", func() {
-			Expect(params.EksctlUtilsCmd.WithArgs(
-				"set-public-access-cidrs",
-				"--cluster", params.ClusterName,
-				"0.0.0.0/0",
-				"--approve",
-			)).To(RunSuccessfully())
-			Expect(k8sAPICall()).ShouldNot(HaveOccurred())
-		})
-	})
-
 	Context("configuring Cloudwatch logging", Serial, Ordered, func() {
 		var (
 			cfg *api.ClusterConfig
@@ -924,7 +876,7 @@ var _ = Describe("(Integration) Create, Get, Scale & Delete", func() {
 				"--timeout=45m",
 				"--cluster", params.ClusterName,
 				"--nodes", "1",
-				"--instance-types", "p3.2xlarge,p3.8xlarge,g3s.xlarge,g4ad.xlarge,g4ad.2xlarge",
+				"--instance-types", "g6.xlarge,g6.2xlarge",
 				"--node-private-networking",
 				"--node-zones", "us-west-2b,us-west-2c",
 				GPUMng,
@@ -1271,7 +1223,9 @@ func createAdditionalSubnet(cfg *api.ClusterConfig) string {
 	var (
 		i1, i2, i3, i4, ic int
 	)
-	fmt.Sscanf(cidr, "%d.%d.%d.%d/%d", &i1, &i2, &i3, &i4, &ic)
+	n, err := fmt.Sscanf(cidr, "%d.%d.%d.%d/%d", &i1, &i2, &i3, &i4, &ic)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(n > 4).To(BeTrue())
 	cidr = fmt.Sprintf("%d.%d.%s.%d/%d", i1, i2, "255", i4, ic)
 
 	var tags []ec2types.Tag

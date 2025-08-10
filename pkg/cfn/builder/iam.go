@@ -3,14 +3,14 @@ package builder
 import (
 	"context"
 	"fmt"
+	"strings"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
 	"github.com/kris-nova/logger"
 
-	gfniam "goformation/v4/cloudformation/iam"
-	gfnrolesanywhere "goformation/v4/cloudformation/rolesanywhere"
-	gfnt "goformation/v4/cloudformation/types"
+	gfniam "github.com/weaveworks/eksctl/pkg/goformation/cloudformation/iam"
+	gfnrolesanywhere "github.com/weaveworks/eksctl/pkg/goformation/cloudformation/rolesanywhere"
+	gfnt "github.com/weaveworks/eksctl/pkg/goformation/cloudformation/types"
 
 	api "github.com/weaveworks/eksctl/pkg/apis/eksctl.io/v1alpha5"
 	"github.com/weaveworks/eksctl/pkg/cfn/outputs"
@@ -27,9 +27,10 @@ const (
 	iamPolicyAmazonEKSWorkerNodePolicy           = "AmazonEKSWorkerNodePolicy"
 	iamPolicyAmazonEKSCNIPolicy                  = "AmazonEKS_CNI_Policy"
 	iamPolicyAmazonEC2ContainerRegistryPowerUser = "AmazonEC2ContainerRegistryPowerUser"
-	iamPolicyAmazonEC2ContainerRegistryReadOnly  = "AmazonEC2ContainerRegistryReadOnly"
+	iamPolicyAmazonEC2ContainerRegistryPullOnly  = "AmazonEC2ContainerRegistryPullOnly"
 	iamPolicyCloudWatchAgentServerPolicy         = "CloudWatchAgentServerPolicy"
 	iamPolicyAmazonSSMManagedInstanceCore        = "AmazonSSMManagedInstanceCore"
+	iamPolicyAmazonEBSCSIDriverPolicy            = "service-role/AmazonEBSCSIDriverPolicy"
 
 	iamPolicyAmazonEKSFargatePodExecutionRolePolicy = "AmazonEKSFargatePodExecutionRolePolicy"
 )
@@ -126,6 +127,9 @@ func (c *ClusterResourceSet) addResourcesForServiceRole() {
 			),
 			ManagedPolicyArns: gfnt.NewSlice(makePolicyARNs(managedPolicyARNs...)...),
 		}
+		if c.spec.IsCustomEksEndpoint() {
+			role.AssumeRolePolicyDocument = createBetaAssumeRolePolicy()
+		}
 	}
 
 	if api.IsSetAndNonEmptyString(c.spec.IAM.ServiceRolePermissionsBoundary) {
@@ -144,11 +148,12 @@ func (c *ClusterResourceSet) addIAMRolesAnywhere() {
 		Enabled: gfnt.NewBoolean(true),
 		Name:    makeName("CA"),
 		Source: &gfnrolesanywhere.TrustAnchor_Source{
-			SourceType: aws.String("CERTIFICATE_BUNDLE"),
-			SourceData: &gfnrolesanywhere.TrustAnchor_SourceData{
-				X509CertificateData: c.spec.RemoteNetworkConfig.IAM.CABundleCert,
-			},
+			SourceType: gfnt.NewString("CERTIFICATE_BUNDLE"),
+			SourceData: &gfnrolesanywhere.TrustAnchor_SourceData{},
 		},
+	}
+	if c.spec.RemoteNetworkConfig.IAM.CABundleCert != nil {
+		trustAnchor.Source.SourceData.X509CertificateData = gfnt.NewString(*c.spec.RemoteNetworkConfig.IAM.CABundleCert)
 	}
 	anywhereProfile := &gfnrolesanywhere.Profile{
 		Enabled: gfnt.NewBoolean(true),
@@ -176,7 +181,7 @@ func (c *ClusterResourceSet) addIAMRolesAnywhere() {
 			eksDescribeClusterPolicy,
 		},
 		ManagedPolicyArns: gfnt.NewSlice(makePolicyARNs([]string{
-			iamPolicyAmazonEC2ContainerRegistryReadOnly,
+			iamPolicyAmazonEC2ContainerRegistryPullOnly,
 			iamPolicyAmazonSSMManagedInstanceCore,
 		}...)...),
 		AWSCloudFormationDependsOn: []string{TrustAnchor},
@@ -209,7 +214,7 @@ func (c *ClusterResourceSet) addSSM() {
 		},
 		ManagedPolicyArns: gfnt.NewSlice(makePolicyARNs([]string{
 			iamPolicyAmazonSSMManagedInstanceCore,
-			iamPolicyAmazonEC2ContainerRegistryReadOnly,
+			iamPolicyAmazonEC2ContainerRegistryPullOnly,
 		}...)...),
 	}
 	c.newResource(SSMRole, role)
@@ -221,7 +226,7 @@ func (c *ClusterResourceSet) addSSM() {
 
 func (c *ClusterResourceSet) addResourcesForRemoteNodesRole() {
 	c.rs.withIAM = true
-	switch *c.spec.RemoteNetworkConfig.IAM.Provider {
+	switch strings.ToLower(*c.spec.RemoteNetworkConfig.IAM.Provider) {
 	case api.SSMProvider:
 		c.addSSM()
 	case api.IRAProvider:

@@ -1,7 +1,7 @@
 package builder
 
 import (
-	gfnt "goformation/v4/cloudformation/types"
+	gfnt "github.com/weaveworks/eksctl/pkg/goformation/cloudformation/types"
 
 	cft "github.com/weaveworks/eksctl/pkg/cfn/template"
 )
@@ -39,10 +39,12 @@ func loadBalancerControllerStatements() []cft.MapOfInterfaces {
 				"ec2:DescribeTags",
 				"ec2:GetCoipPoolUsage",
 				"ec2:DescribeCoipPools",
+				"ec2:GetSecurityGroupsForVpc",
+				"ec2:DescribeIpamPools",
+				"ec2:DescribeRouteTables",
 				"elasticloadbalancing:DescribeLoadBalancers",
 				"elasticloadbalancing:DescribeLoadBalancerAttributes",
 				"elasticloadbalancing:DescribeListeners",
-				"elasticloadbalancing:DescribeListenerAttributes",
 				"elasticloadbalancing:DescribeListenerCertificates",
 				"elasticloadbalancing:DescribeSSLPolicies",
 				"elasticloadbalancing:DescribeRules",
@@ -50,6 +52,9 @@ func loadBalancerControllerStatements() []cft.MapOfInterfaces {
 				"elasticloadbalancing:DescribeTargetGroupAttributes",
 				"elasticloadbalancing:DescribeTargetHealth",
 				"elasticloadbalancing:DescribeTags",
+				"elasticloadbalancing:DescribeTrustStores",
+				"elasticloadbalancing:DescribeListenerAttributes",
+				"elasticloadbalancing:DescribeCapacityReservation",
 			},
 			"Resource": resourceAll,
 		},
@@ -191,7 +196,6 @@ func loadBalancerControllerStatements() []cft.MapOfInterfaces {
 		{
 			"Effect": effectAllow,
 			"Action": []string{
-				"elasticloadbalancing:ModifyListenerAttributes",
 				"elasticloadbalancing:ModifyLoadBalancerAttributes",
 				"elasticloadbalancing:SetIpAddressType",
 				"elasticloadbalancing:SetSecurityGroups",
@@ -200,6 +204,9 @@ func loadBalancerControllerStatements() []cft.MapOfInterfaces {
 				"elasticloadbalancing:ModifyTargetGroup",
 				"elasticloadbalancing:ModifyTargetGroupAttributes",
 				"elasticloadbalancing:DeleteTargetGroup",
+				"elasticloadbalancing:ModifyListenerAttributes",
+				"elasticloadbalancing:ModifyCapacityReservation",
+				"elasticloadbalancing:ModifyIpPools",
 			},
 			"Resource": resourceAll,
 			"Condition": map[string]interface{}{
@@ -246,6 +253,7 @@ func loadBalancerControllerStatements() []cft.MapOfInterfaces {
 				"elasticloadbalancing:AddListenerCertificates",
 				"elasticloadbalancing:RemoveListenerCertificates",
 				"elasticloadbalancing:ModifyRule",
+				"elasticloadbalancing:SetRulePriorities",
 			},
 			"Resource": resourceAll,
 		},
@@ -356,142 +364,6 @@ func appMeshStatements(appendAction string) []cft.MapOfInterfaces {
 				"route53:ChangeResourceRecordSets",
 				"route53:DeleteHealthCheck",
 				appendAction,
-			},
-		},
-	}
-}
-
-func ebsStatements() []cft.MapOfInterfaces {
-	return []cft.MapOfInterfaces{
-		{
-			"Effect": "Allow",
-			"Action": []string{
-				"ec2:CreateSnapshot",
-				"ec2:AttachVolume",
-				"ec2:DetachVolume",
-				"ec2:ModifyVolume",
-				"ec2:DescribeAvailabilityZones",
-				"ec2:DescribeInstances",
-				"ec2:DescribeSnapshots",
-				"ec2:DescribeTags",
-				"ec2:DescribeVolumes",
-				"ec2:DescribeVolumesModifications",
-			},
-			"Resource": "*",
-		},
-		{
-			"Effect": "Allow",
-			"Action": []string{
-				"ec2:CreateTags",
-			},
-			"Resource": []*gfnt.Value{
-				addARNPartitionPrefix("ec2:*:*:volume/*"),
-				addARNPartitionPrefix("ec2:*:*:snapshot/*"),
-			},
-			"Condition": cft.MapOfInterfaces{
-				"StringEquals": cft.MapOfInterfaces{
-					"ec2:CreateAction": []string{
-						"CreateVolume",
-						"CreateSnapshot",
-					},
-				},
-			},
-		},
-		{
-			"Effect": "Allow",
-			"Action": []string{
-				"ec2:DeleteTags",
-			},
-			"Resource": []*gfnt.Value{
-				addARNPartitionPrefix("ec2:*:*:volume/*"),
-				addARNPartitionPrefix("ec2:*:*:snapshot/*"),
-			},
-		},
-		{
-			"Effect": "Allow",
-
-			"Action": []string{
-
-				"ec2:CreateVolume",
-			},
-			"Resource": "*",
-			"Condition": cft.MapOfInterfaces{
-				"StringLike": cft.MapOfInterfaces{
-					"aws:RequestTag/ebs.csi.aws.com/cluster": "true",
-				},
-			},
-		},
-		{
-			"Effect": "Allow",
-			"Action": []string{
-				"ec2:CreateVolume",
-			},
-			"Resource": "*",
-			"Condition": cft.MapOfInterfaces{
-				"StringLike": cft.MapOfInterfaces{
-					"aws:RequestTag/CSIVolumeName": "*",
-				},
-			},
-		},
-		{
-			"Effect": "Allow",
-			"Action": []string{
-				"ec2:DeleteVolume",
-			},
-			"Resource": "*",
-			"Condition": cft.MapOfInterfaces{
-				"StringLike": cft.MapOfInterfaces{
-					"ec2:ResourceTag/ebs.csi.aws.com/cluster": "true",
-				},
-			},
-		},
-		{
-			"Effect": "Allow",
-
-			"Action": []string{
-				"ec2:DeleteVolume",
-			},
-			"Resource": "*",
-			"Condition": cft.MapOfInterfaces{
-				"StringLike": cft.MapOfInterfaces{
-					"ec2:ResourceTag/CSIVolumeName": "*",
-				},
-			},
-		},
-		{
-			"Effect": "Allow",
-			"Action": []string{
-				"ec2:DeleteVolume",
-			},
-			"Resource": "*",
-			"Condition": cft.MapOfInterfaces{
-				"StringLike": cft.MapOfInterfaces{
-					"ec2:ResourceTag/kubernetes.io/created-for/pvc/name": "*",
-				},
-			},
-		},
-		{
-			"Effect": "Allow",
-			"Action": []string{
-				"ec2:DeleteSnapshot",
-			},
-			"Resource": "*",
-			"Condition": cft.MapOfInterfaces{
-				"StringLike": cft.MapOfInterfaces{
-					"ec2:ResourceTag/CSIVolumeSnapshotName": "*",
-				},
-			},
-		},
-		{
-			"Effect": "Allow",
-			"Action": []string{
-				"ec2:DeleteSnapshot",
-			},
-			"Resource": "*",
-			"Condition": cft.MapOfInterfaces{
-				"StringLike": cft.MapOfInterfaces{
-					"ec2:ResourceTag/ebs.csi.aws.com/cluster": "true",
-				},
 			},
 		},
 	}

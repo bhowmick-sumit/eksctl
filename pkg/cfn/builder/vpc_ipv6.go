@@ -6,9 +6,9 @@ import (
 
 	"github.com/weaveworks/eksctl/pkg/awsapi"
 
-	"goformation/v4/cloudformation/cloudformation"
-	gfnec2 "goformation/v4/cloudformation/ec2"
-	gfnt "goformation/v4/cloudformation/types"
+	"github.com/weaveworks/eksctl/pkg/goformation/cloudformation/cloudformation"
+	gfnec2 "github.com/weaveworks/eksctl/pkg/goformation/cloudformation/ec2"
+	gfnt "github.com/weaveworks/eksctl/pkg/goformation/cloudformation/types"
 
 	api "github.com/weaveworks/eksctl/pkg/apis/eksctl.io/v1alpha5"
 	"github.com/weaveworks/eksctl/pkg/cfn/outputs"

@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"reflect"
 
-	gfn "goformation/v4/cloudformation"
-	gfncfn "goformation/v4/cloudformation/cloudformation"
-	gfnt "goformation/v4/cloudformation/types"
+	gfn "github.com/weaveworks/eksctl/pkg/goformation/cloudformation"
+	gfncfn "github.com/weaveworks/eksctl/pkg/goformation/cloudformation/cloudformation"
+	gfnt "github.com/weaveworks/eksctl/pkg/goformation/cloudformation/types"
 
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
 

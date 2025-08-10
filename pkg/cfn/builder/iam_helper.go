@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	gfn "goformation/v4/cloudformation"
-	gfniam "goformation/v4/cloudformation/iam"
-	gfnt "goformation/v4/cloudformation/types"
+	gfn "github.com/weaveworks/eksctl/pkg/goformation/cloudformation"
+	gfniam "github.com/weaveworks/eksctl/pkg/goformation/cloudformation/iam"
+	gfnt "github.com/weaveworks/eksctl/pkg/goformation/cloudformation/types"
 
 	"github.com/aws/aws-sdk-go-v2/aws/arn"
 	api "github.com/weaveworks/eksctl/pkg/apis/eksctl.io/v1alpha5"
@@ -65,8 +65,8 @@ func createWellKnownPolicies(wellKnownPolicies api.WellKnownPolicies) ([]managed
 		)
 	}
 	if wellKnownPolicies.EBSCSIController {
-		customPolicies = append(customPolicies,
-			customPolicyForRole{Name: "PolicyEBSCSIController", Statements: ebsStatements()},
+		managedPolicies = append(managedPolicies,
+			managedPolicyForRole{name: iamPolicyAmazonEBSCSIDriverPolicy},
 		)
 	}
 	if wellKnownPolicies.EFSCSIController {
@@ -125,10 +125,6 @@ func createRole(cfnTemplate cfnTemplate, clusterIAMConfig *api.ClusterIAM, iamCo
 		cfnTemplate.attachAllowPolicy("PolicyAppMeshPreview", refIR, appMeshStatements("appmesh-preview:*"))
 	}
 
-	if api.IsEnabled(iamConfig.WithAddonPolicies.EBS) {
-		cfnTemplate.attachAllowPolicy("PolicyEBS", refIR, ebsStatements())
-	}
-
 	if api.IsEnabled(iamConfig.WithAddonPolicies.FSX) {
 		cfnTemplate.attachAllowPolicy("PolicyFSX", refIR, fsxStatements())
 		cfnTemplate.attachAllowPolicy("PolicyServiceLinkRole", refIR, serviceLinkRoleStatements())
@@ -161,7 +157,7 @@ func makeManagedPolicies(iamCluster *api.ClusterIAM, iamConfig *api.NodeGroupIAM
 			// The Managed Nodegroup API requires this managed policy to be present, even though
 			// AmazonEC2ContainerRegistryPowerUser (attached if imageBuilder is enabled) contains a superset of the
 			// actions allowed by this managed policy
-			managedPolicyNames.Insert(iamPolicyAmazonEC2ContainerRegistryReadOnly)
+			managedPolicyNames.Insert(iamPolicyAmazonEC2ContainerRegistryPullOnly)
 		}
 		managedPolicyNames.Insert(iamPolicyAmazonSSMManagedInstanceCore)
 	}
@@ -171,11 +167,15 @@ func makeManagedPolicies(iamCluster *api.ClusterIAM, iamConfig *api.NodeGroupIAM
 	} else if !managed {
 		// attach this policy even if `AttachPolicyARNs` is specified to preserve existing behaviour for unmanaged
 		// nodegroups
-		managedPolicyNames.Insert(iamPolicyAmazonEC2ContainerRegistryReadOnly)
+		managedPolicyNames.Insert(iamPolicyAmazonEC2ContainerRegistryPullOnly)
 	}
 
 	if api.IsEnabled(iamConfig.WithAddonPolicies.CloudWatch) {
 		managedPolicyNames.Insert(iamPolicyCloudWatchAgentServerPolicy)
+	}
+
+	if api.IsEnabled(iamConfig.WithAddonPolicies.EBS) {
+		managedPolicyNames.Insert(iamPolicyAmazonEBSCSIDriverPolicy)
 	}
 
 	for _, policyARN := range iamConfig.AttachPolicyARNs {

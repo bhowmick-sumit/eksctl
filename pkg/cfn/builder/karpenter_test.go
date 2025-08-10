@@ -94,6 +94,16 @@ var expectedTemplate = `{
         "EKS": "eks.amazonaws.com",
         "EKSFargatePods": "eks-fargate-pods.amazonaws.com"
       },
+      "aws-iso-e": {
+        "EC2": "ec2.amazonaws.com",
+        "EKS": "eks.amazonaws.com",
+        "EKSFargatePods": "eks-fargate-pods.amazonaws.com"
+      },
+      "aws-iso-f": {
+        "EC2": "ec2.amazonaws.com",
+        "EKS": "eks.amazonaws.com",
+        "EKSFargatePods": "eks-fargate-pods.amazonaws.com"
+      },
       "aws-us-gov": {
         "EC2": "ec2.amazonaws.com",
         "EKS": "eks.amazonaws.com",
@@ -186,7 +196,7 @@ var expectedTemplate = `{
         },
         "ManagedPolicyArns": [
           {
-            "Fn::Sub": "arn:${AWS::Partition}:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+            "Fn::Sub": "arn:${AWS::Partition}:iam::aws:policy/AmazonEC2ContainerRegistryPullOnly"
           },
           {
             "Fn::Sub": "arn:${AWS::Partition}:iam::aws:policy/AmazonEKSWorkerNodePolicy"
@@ -237,6 +247,16 @@ var expectedTemplateWithPermissionBoundary = `{
       },
       "aws-iso-b": {
         "EC2": "ec2.sc2s.sgov.gov",
+        "EKS": "eks.amazonaws.com",
+        "EKSFargatePods": "eks-fargate-pods.amazonaws.com"
+      },
+      "aws-iso-e": {
+        "EC2": "ec2.amazonaws.com",
+        "EKS": "eks.amazonaws.com",
+        "EKSFargatePods": "eks-fargate-pods.amazonaws.com"
+      },
+      "aws-iso-f": {
+        "EC2": "ec2.amazonaws.com",
         "EKS": "eks.amazonaws.com",
         "EKSFargatePods": "eks-fargate-pods.amazonaws.com"
       },
@@ -332,7 +352,7 @@ var expectedTemplateWithPermissionBoundary = `{
         },
         "ManagedPolicyArns": [
           {
-            "Fn::Sub": "arn:${AWS::Partition}:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+            "Fn::Sub": "arn:${AWS::Partition}:iam::aws:policy/AmazonEC2ContainerRegistryPullOnly"
           },
           {
             "Fn::Sub": "arn:${AWS::Partition}:iam::aws:policy/AmazonEKSWorkerNodePolicy"
@@ -384,6 +404,16 @@ var expectedTemplateWithSpotInterruptionQueue = `{
       },
       "aws-iso-b": {
         "EC2": "ec2.sc2s.sgov.gov",
+        "EKS": "eks.amazonaws.com",
+        "EKSFargatePods": "eks-fargate-pods.amazonaws.com"
+      },
+      "aws-iso-e": {
+        "EC2": "ec2.amazonaws.com",
+        "EKS": "eks.amazonaws.com",
+        "EKSFargatePods": "eks-fargate-pods.amazonaws.com"
+      },
+      "aws-iso-f": {
+        "EC2": "ec2.amazonaws.com",
         "EKS": "eks.amazonaws.com",
         "EKSFargatePods": "eks-fargate-pods.amazonaws.com"
       },
@@ -566,7 +596,7 @@ var expectedTemplateWithSpotInterruptionQueue = `{
         },
         "ManagedPolicyArns": [
           {
-            "Fn::Sub": "arn:${AWS::Partition}:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+            "Fn::Sub": "arn:${AWS::Partition}:iam::aws:policy/AmazonEC2ContainerRegistryPullOnly"
           },
           {
             "Fn::Sub": "arn:${AWS::Partition}:iam::aws:policy/AmazonEKSWorkerNodePolicy"

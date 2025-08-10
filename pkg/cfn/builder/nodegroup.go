@@ -10,11 +10,11 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
 
-	gfn "goformation/v4/cloudformation"
-	gfncfn "goformation/v4/cloudformation/cloudformation"
-	gfnec2 "goformation/v4/cloudformation/ec2"
-	gfneks "goformation/v4/cloudformation/eks"
-	gfnt "goformation/v4/cloudformation/types"
+	gfn "github.com/weaveworks/eksctl/pkg/goformation/cloudformation"
+	gfncfn "github.com/weaveworks/eksctl/pkg/goformation/cloudformation/cloudformation"
+	gfnec2 "github.com/weaveworks/eksctl/pkg/goformation/cloudformation/ec2"
+	gfneks "github.com/weaveworks/eksctl/pkg/goformation/cloudformation/eks"
+	gfnt "github.com/weaveworks/eksctl/pkg/goformation/cloudformation/types"
 
 	"github.com/kris-nova/logger"
 
@@ -176,11 +176,17 @@ func (n *NodeGroupResourceSet) addAccessEntry() {
 		return
 	}
 
-	n.newResource("AccessEntry", &gfneks.AccessEntry{
-		PrincipalArn: gfnt.MakeFnGetAttString(cfnIAMInstanceRoleName, "Arn"),
-		ClusterName:  gfnt.NewString(n.options.ClusterConfig.Metadata.Name),
-		Type:         gfnt.NewString(string(api.GetAccessEntryType(n.options.NodeGroup))),
-	})
+	if n.options.ClusterConfig.IsCustomEksEndpoint() {
+		n.newResource("AccessEntry",
+			addBetaAccessEntry(n.options.ClusterConfig.Metadata.Name,
+				string(api.GetAccessEntryType(n.options.NodeGroup))))
+	} else {
+		n.newResource("AccessEntry", &gfneks.AccessEntry{
+			PrincipalArn: gfnt.MakeFnGetAttString(cfnIAMInstanceRoleName, "Arn"),
+			ClusterName:  gfnt.NewString(n.options.ClusterConfig.Metadata.Name),
+			Type:         gfnt.NewString(string(api.GetAccessEntryType(n.options.NodeGroup))),
+		})
+	}
 }
 
 func (n *NodeGroupResourceSet) addResourcesForSecurityGroups() {
@@ -455,6 +461,12 @@ func newLaunchTemplateData(ctx context.Context, n *NodeGroupResourceSet) (*gfnec
 		TagSpecifications: makeTags(ng.NodeGroupBase, n.options.ClusterConfig.Metadata),
 	}
 
+	if ng.EnclaveEnabled != nil {
+		launchTemplateData.EnclaveOptions = &gfnec2.LaunchTemplate_EnclaveOptions{
+			Enabled: gfnt.NewBoolean(*ng.EnclaveEnabled),
+		}
+	}
+
 	if ng.CapacityReservation != nil {
 		valueOrNil := func(value *string) *gfnt.Value {
 			if value != nil {
@@ -468,6 +480,11 @@ func newLaunchTemplateData(ctx context.Context, n *NodeGroupResourceSet) (*gfnec
 			launchTemplateData.CapacityReservationSpecification.CapacityReservationTarget = &gfnec2.LaunchTemplate_CapacityReservationTarget{
 				CapacityReservationId:               valueOrNil(ng.CapacityReservation.CapacityReservationTarget.CapacityReservationID),
 				CapacityReservationResourceGroupArn: valueOrNil(ng.CapacityReservation.CapacityReservationTarget.CapacityReservationResourceGroupARN),
+			}
+		}
+		if ng.InstanceMarketOptions != nil {
+			launchTemplateData.InstanceMarketOptions = &gfnec2.LaunchTemplate_InstanceMarketOptions{
+				MarketType: valueOrNil(ng.InstanceMarketOptions.MarketType),
 			}
 		}
 	}

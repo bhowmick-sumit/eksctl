@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -62,11 +63,16 @@ var (
 	GPUDriversWarning = func(amiFamily string) string {
 		return fmt.Sprintf("%s does not ship with NVIDIA GPU drivers installed, hence won't support running GPU-accelerated workloads out of the box", amiFamily)
 	}
+
+	NeuronDeviceDriversWarning = func(amiFamily string) string {
+		return fmt.Sprintf("%s does not ship with Neuron Devices drivers installed, hence won't support running inference-accelerated workloads out of the box", amiFamily)
+	}
 )
 
 var (
-	SupportedAmazonLinuxImages = supportedAMIFamiliesForOS(IsAmazonLinuxImage)
-	SupportedUbuntuImages      = supportedAMIFamiliesForOS(IsUbuntuImage)
+	SupportedAmazonLinuxImages  = supportedAMIFamiliesForOS(IsAmazonLinuxImage)
+	SupportedBottlerocketImages = supportedAMIFamiliesForOS(IsBottlerocketImage)
+	SupportedUbuntuImages       = supportedAMIFamiliesForOS(IsUbuntuImage)
 )
 
 // NOTE: we don't use k8s.io/apimachinery/pkg/util/sets here to keep API package free of dependencies
@@ -90,14 +96,6 @@ func (c *ClusterConfig) validateRemoteNetworkingConfig() error {
 		return nil
 	}
 
-	if !IsEnabled(c.VPC.ClusterEndpoints.PublicAccess) {
-		return fmt.Errorf("remoteNetworkConfig requires public cluster endpoint access")
-	}
-
-	if c.IsFullyPrivate() {
-		return fmt.Errorf("remoteNetworkConfig is not supported on fully private EKS cluster")
-	}
-
 	if c.IPv6Enabled() {
 		return fmt.Errorf("remoteNetworkConfig is not supported on EKS cluster configured with IPv6 address family")
 	}
@@ -110,13 +108,9 @@ func (c *ClusterConfig) validateRemoteNetworkingConfig() error {
 		return setNonEmpty("remoteNetworkConfig.remoteNodeNetworks")
 	}
 
-	if c.VPC.ID != "" {
-		if rnc.VPCGatewayID.IsSet() {
+	if rnc.VPCGatewayID.IsSet() {
+		if c.VPC.ID != "" {
 			return fmt.Errorf("remoteNetworkConfig.vpcGatewayID is not supported when using pre-existing VPC")
-		}
-	} else {
-		if !rnc.VPCGatewayID.IsSet() {
-			return setNonEmpty("remoteNetworkConfig.vpcGatewayID")
 		}
 		// vpcGatewayId must be either a virtual private gateway or a transit gateway
 		if !rnc.VPCGatewayID.IsTransitGateway() && !rnc.VPCGatewayID.IsVirtualPrivateGateway() {
@@ -318,17 +312,6 @@ func ValidateClusterConfig(cfg *ClusterConfig) error {
 	return nil
 }
 
-// ValidateClusterVersion validates the cluster version.
-func ValidateClusterVersion(clusterConfig *ClusterConfig) error {
-	if clusterVersion := clusterConfig.Metadata.Version; clusterVersion != "" && clusterVersion != DefaultVersion && !IsSupportedVersion(clusterVersion) {
-		if IsDeprecatedVersion(clusterVersion) {
-			return fmt.Errorf("invalid version, %s is no longer supported, supported values: %s\nsee also: https://docs.aws.amazon.com/eks/latest/userguide/kubernetes-versions.html", clusterVersion, strings.Join(SupportedVersions(), ", "))
-		}
-		return fmt.Errorf("invalid version, supported values: %s", strings.Join(SupportedVersions(), ", "))
-	}
-	return nil
-}
-
 func validateKarpenterConfig(cfg *ClusterConfig) error {
 	if cfg.Karpenter == nil {
 		return nil
@@ -437,7 +420,7 @@ func (c *ClusterConfig) ValidateVPCConfig() error {
 		return fmt.Errorf("Ipv6Cidr and Ipv6CidrPool are only supported when IPFamily is set to IPv6")
 	}
 
-	if c.IPv6Enabled() {
+	if c.IPv6Enabled() && c.Status == nil {
 		if IsEnabled(c.VPC.AutoAllocateIPv6) {
 			return fmt.Errorf("auto allocate ipv6 is not supported with IPv6")
 		}
@@ -554,6 +537,15 @@ func (c *ClusterConfig) addonContainsManagedAddons(addons []string) []string {
 	return missing
 }
 
+func (c *ClusterConfig) getAddon(name string) *Addon {
+	for _, addon := range c.Addons {
+		if addon.Name == name {
+			return addon
+		}
+	}
+	return nil
+}
+
 // ValidateClusterEndpointConfig checks the endpoint configuration for potential issues
 func (c *ClusterConfig) ValidateClusterEndpointConfig() error {
 	if c.VPC.ClusterEndpoints != nil {
@@ -602,6 +594,10 @@ func (c *ClusterConfig) ValidatePrivateCluster() error {
 
 // validateKubernetesNetworkConfig validates the k8s network config
 func (c *ClusterConfig) validateKubernetesNetworkConfig() error {
+	// this check ensured the validation is only run on cluster creation
+	if c.Status != nil {
+		return nil
+	}
 	if c.KubernetesNetworkConfig == nil {
 		return nil
 	}
@@ -622,8 +618,26 @@ func (c *ClusterConfig) validateKubernetesNetworkConfig() error {
 			if missing := c.addonContainsManagedAddons([]string{VPCCNIAddon, CoreDNSAddon, KubeProxyAddon}); len(missing) != 0 {
 				return fmt.Errorf("the default core addons must be defined for IPv6; missing addon(s): %s; either define them or use EKS Auto Mode", strings.Join(missing, ", "))
 			}
-			if c.IAM == nil || c.IAM != nil && IsDisabled(c.IAM.WithOIDC) {
-				return fmt.Errorf("oidc needs to be enabled if IPv6 is set; either set it or use EKS Auto Mode")
+
+			// Check if at least one credential provider (Pod identity or IRSA) is configured
+			if len(c.addonContainsManagedAddons([]string{PodIdentityAgentAddon})) != 0 && (c.IAM == nil || c.IAM != nil && IsDisabled(c.IAM.WithOIDC)) {
+				return errors.New("either pod identity or oidc needs to be enabled if IPv6 is set; set either one or use EKS Auto Mode")
+			}
+
+			// If the pod identity addon is present, verify it is correctly configured for use by the VPC CNI addon
+			// Assuming user intends to use pod identities if the pod identity agent addon is added.
+			if len(c.addonContainsManagedAddons([]string{PodIdentityAgentAddon})) == 0 && !c.AddonsConfig.AutoApplyPodIdentityAssociations {
+				vpcCNIAddonEntry := c.getAddon(VPCCNIAddon)
+
+				if vpcCNIAddonEntry == nil {
+					// should be unreachable
+					return errors.New("the vpc-cni addon must be defined for IPv6; either define it or use EKS Auto Mode")
+				}
+
+				if !vpcCNIAddonEntry.UseDefaultPodIdentityAssociations &&
+					(vpcCNIAddonEntry.PodIdentityAssociations == nil || len(*vpcCNIAddonEntry.PodIdentityAssociations) == 0) {
+					return fmt.Errorf("Set one of: addonsConfig.autoApplyPodIdentityAssociations, useDefaultPodIdentityAssociations on the vpc-cni addon, apply a custom pod identity on the vpc-cni addon")
+				}
 			}
 		}
 
@@ -747,16 +761,21 @@ func validateNodeGroupBase(np NodePool, path string, controlPlaneOnOutposts bool
 			(ng.InstanceSelector.GPUs == nil || *ng.InstanceSelector.GPUs != 0) {
 			logger.Warning("instance selector may/will select GPU instance types, " + GPUDriversWarning(ng.AMIFamily))
 		}
+		if ng.InstanceSelector != nil && !ng.InstanceSelector.IsZero() &&
+			(ng.InstanceSelector.NeuronDevices == nil || *ng.InstanceSelector.NeuronDevices != 0) {
+			logger.Warning("instance selector may/will select Neuron Device instance types, " + NeuronDeviceDriversWarning(ng.AMIFamily))
+		}
 	}
 
 	if ng.AMIFamily != NodeImageFamilyAmazonLinux2 &&
 		ng.AMIFamily != NodeImageFamilyAmazonLinux2023 &&
+		ng.AMIFamily != NodeImageFamilyBottlerocket &&
 		ng.AMIFamily != "" {
-		// Only AL2 and AL2023 support Inferentia hosts.
+		// Only AL2, AL2023 and Bottlerocket support Inferentia hosts.
 		if instanceutils.IsInferentiaInstanceType(instanceType) {
 			return ErrUnsupportedInstanceTypes("Inferentia", ng.AMIFamily, fmt.Sprintf("please use %s instead", NodeImageFamilyAmazonLinux2))
 		}
-		// Only AL2 and AL2023 support Trainium hosts.
+		// Only AL2, AL2023 and Bottlerocket support Trainium hosts.
 		if instanceutils.IsTrainiumInstanceType(instanceType) {
 			return ErrUnsupportedInstanceTypes("Trainium", ng.AMIFamily, fmt.Sprintf("please use %s instead", NodeImageFamilyAmazonLinux2))
 		}
@@ -777,6 +796,18 @@ func validateNodeGroupBase(np NodePool, path string, controlPlaneOnOutposts bool
 			if ng.CapacityReservation.CapacityReservationTarget.CapacityReservationID != nil && ng.CapacityReservation.CapacityReservationTarget.CapacityReservationResourceGroupARN != nil {
 				return errors.New("only one of CapacityReservationID or CapacityReservationResourceGroupARN may be specified at a time")
 			}
+		}
+
+		if ng.InstanceMarketOptions != nil {
+			if ng.InstanceMarketOptions.MarketType != nil {
+				if *ng.InstanceMarketOptions.MarketType != "capacity-block" {
+					return fmt.Errorf(`only accepted value is "capacity-block"; got "%s"`, *ng.InstanceMarketOptions.MarketType)
+				}
+			}
+		}
+	} else {
+		if ng.InstanceMarketOptions != nil {
+			return errors.New("instanceMarketOptions cannot be set without capacityReservation")
 		}
 	}
 
@@ -971,8 +1002,8 @@ func ValidateNodeGroup(i int, ng *NodeGroup, cfg *ClusterConfig) error {
 		return err
 	}
 
-	if instanceutils.IsARMGPUInstanceType(SelectInstanceType(ng)) && ng.AMIFamily != NodeImageFamilyBottlerocket {
-		return fmt.Errorf("ARM GPU instance types are not supported for unmanaged nodegroups with AMIFamily %s", ng.AMIFamily)
+	if err := validateInstanceTypeSupport(ng); err != nil {
+		return err
 	}
 
 	if err := validateInstancesDistribution(ng); err != nil {
@@ -1000,7 +1031,7 @@ func ValidateNodeGroup(i int, ng *NodeGroup, cfg *ClusterConfig) error {
 				return err
 			}
 			if *ng.ContainerRuntime != ContainerRuntimeContainerD && isDockershimDeprecated {
-				return fmt.Errorf("only %s is supported for container runtime, starting with EKS version %s", ContainerRuntimeContainerD, Version1_24)
+				return fmt.Errorf("only %s is supported for container runtime, starting with EKS version %s", ContainerRuntimeContainerD, DockershimDeprecationVersion)
 			}
 		}
 		if ng.OverrideBootstrapCommand != nil {
@@ -1040,6 +1071,21 @@ func ValidateNodeGroup(i int, ng *NodeGroup, cfg *ClusterConfig) error {
 		}
 	}
 
+	return nil
+}
+
+// validateInstanceTypeSupport checks if the provided instance types are
+// supported by the AMIFamily. If a custom AMI is provided then it will skip the
+// validation, as it could be a derivative of a supported family type.
+func validateInstanceTypeSupport(ng *NodeGroup) error {
+	if IsAMI(ng.AMI) {
+		return nil
+	}
+	instanceType := SelectInstanceType(ng)
+	amiType := GetAMIType(ng.AMIFamily, instanceType, true /* strict, don't allows fallbacks */)
+	if amiType == "" {
+		return fmt.Errorf("%s instance types are not supported for unmanaged nodegroups with AMIFamily %s", instanceType, ng.AMIFamily)
+	}
 	return nil
 }
 
@@ -1347,11 +1393,11 @@ func ValidateManagedNodeGroup(index int, ng *ManagedNodeGroup) error {
 		if ng.AMIFamily == "" {
 			return errors.New("when using a custom AMI, amiFamily needs to be explicitly set via config file or via --node-ami-family flag")
 		}
-		if !IsAmazonLinuxImage(ng.AMIFamily) && !IsUbuntuImage(ng.AMIFamily) {
+		if !IsAmazonLinuxImage(ng.AMIFamily) && !IsBottlerocketImage(ng.AMIFamily) && !IsUbuntuImage(ng.AMIFamily) {
 			return fmt.Errorf("cannot set amiFamily to %s when using a custom AMI for managed nodes, only %s are supported", ng.AMIFamily,
-				strings.Join(append(SupportedAmazonLinuxImages, SupportedUbuntuImages...), ", "))
+				strings.Join(slices.Concat(SupportedAmazonLinuxImages, SupportedBottlerocketImages, SupportedUbuntuImages), ", "))
 		}
-		if ng.OverrideBootstrapCommand == nil && ng.AMIFamily != NodeImageFamilyAmazonLinux2023 {
+		if ng.OverrideBootstrapCommand == nil && ng.AMIFamily != NodeImageFamilyAmazonLinux2023 && ng.AMIFamily != NodeImageFamilyBottlerocket {
 			return fmt.Errorf("%[1]s.overrideBootstrapCommand is required when using a custom AMI based on %s (%[1]s.ami)", path, ng.AMIFamily)
 		}
 		notSupportedWithCustomAMIErr := func(field string) error {
@@ -1574,12 +1620,24 @@ func IsAmazonLinuxImage(imageFamily string) bool {
 	}
 }
 
+func IsBottlerocketImage(imageFamily string) bool {
+	switch imageFamily {
+	case NodeImageFamilyBottlerocket:
+		return true
+
+	default:
+		return false
+	}
+}
+
 func IsUbuntuImage(imageFamily string) bool {
 	switch imageFamily {
-	case NodeImageFamilyUbuntuPro2204,
+	case NodeImageFamilyUbuntuPro2404,
+		NodeImageFamilyUbuntu2404,
+		NodeImageFamilyUbuntuPro2204,
 		NodeImageFamilyUbuntu2204,
-		NodeImageFamilyUbuntu2004,
-		NodeImageFamilyUbuntu1804:
+		NodeImageFamilyUbuntuPro2004,
+		NodeImageFamilyUbuntu2004:
 		return true
 
 	default:

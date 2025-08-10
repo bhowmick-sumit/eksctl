@@ -6,9 +6,9 @@ import (
 
 	api "github.com/weaveworks/eksctl/pkg/apis/eksctl.io/v1alpha5"
 
-	"goformation/v4"
-	gfn "goformation/v4/cloudformation"
-	gfnt "goformation/v4/cloudformation/types"
+	"github.com/weaveworks/eksctl/pkg/goformation"
+	gfn "github.com/weaveworks/eksctl/pkg/goformation/cloudformation"
+	gfnt "github.com/weaveworks/eksctl/pkg/goformation/cloudformation/types"
 
 	cfntypes "github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
 )
@@ -31,12 +31,15 @@ type AutoModeRefs struct {
 	NodeRole *gfnt.Value
 }
 
-func AddAutoModeResources(clusterTemplate *gfn.Template) (AutoModeRefs, error) {
+func AddAutoModeResources(clusterTemplate *gfn.Template, permissionsBoundary api.ARN) (AutoModeRefs, error) {
 	template, err := goformation.ParseYAML(autoModeNodeRoleTemplate)
 	if err != nil {
 		return AutoModeRefs{}, err
 	}
-	for resourceName, resource := range template.Resources {
+	for resourceName, resource := range template.GetAllIAMRoleResources() {
+		if !permissionsBoundary.IsZero() {
+			resource.PermissionsBoundary = gfnt.NewString(permissionsBoundary.String())
+		}
 		clusterTemplate.Resources[resourceName] = resource
 	}
 	for key, output := range template.Outputs {

@@ -45,7 +45,7 @@ var _ = Describe("Cluster Template Builder", func() {
 	})
 
 	JustBeforeEach(func() {
-		crs = builder.NewClusterResourceSet(provider.EC2(), provider.Region(), cfg, existingStack, false)
+		crs = builder.NewClusterResourceSet(provider.EC2(), provider.STS(), provider.Region(), cfg, existingStack, false)
 	})
 
 	Describe("AddAllResources", func() {
@@ -680,7 +680,7 @@ var _ = Describe("Cluster Template Builder", func() {
 				Expect(clusterTemplate.Resources).To(HaveKey("HybridNodesIRARole"))
 				iraRole := clusterTemplate.Resources["HybridNodesIRARole"]
 				Expect(iraRole.Properties.ManagedPolicyArns).To(ContainElement(map[string]interface{}{
-					"Fn::Sub": "arn:${AWS::Partition}:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly",
+					"Fn::Sub": "arn:${AWS::Partition}:iam::aws:policy/AmazonEC2ContainerRegistryPullOnly",
 				}))
 				Expect(iraRole.Properties.ManagedPolicyArns).To(ContainElement(map[string]interface{}{
 					"Fn::Sub": "arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore",

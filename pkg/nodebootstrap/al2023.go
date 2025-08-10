@@ -14,7 +14,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 
 	api "github.com/weaveworks/eksctl/pkg/apis/eksctl.io/v1alpha5"
-	"github.com/weaveworks/eksctl/pkg/nodebootstrap/assets"
 	"github.com/weaveworks/eksctl/pkg/nodebootstrap/utils"
 )
 
@@ -32,17 +31,11 @@ type AL2023 struct {
 
 func NewManagedAL2023Bootstrapper(cfg *api.ClusterConfig, mng *api.ManagedNodeGroup, clusterDNS string) *AL2023 {
 	al2023 := newAL2023Bootstrapper(cfg, mng, clusterDNS)
-	if api.IsEnabled(mng.EFAEnabled) {
-		al2023.cloudboot = append(al2023.cloudboot, assets.EfaManagedAL2023Boothook)
-	}
 	return al2023
 }
 
 func NewAL2023Bootstrapper(cfg *api.ClusterConfig, ng *api.NodeGroup, clusterDNS string) *AL2023 {
 	al2023 := newAL2023Bootstrapper(cfg, ng, clusterDNS)
-	if api.IsEnabled(ng.EFAEnabled) {
-		al2023.scripts = append(al2023.scripts, assets.EfaAl2023Sh)
-	}
 	return al2023
 }
 
@@ -51,7 +44,7 @@ func newAL2023Bootstrapper(cfg *api.ClusterConfig, np api.NodePool, clusterDNS s
 		cfg:        cfg,
 		nodePool:   np,
 		clusterDNS: clusterDNS,
-		scripts:    []string{assets.AL2023XTablesLock},
+		scripts:    []string{},
 	}
 }
 
@@ -133,6 +126,13 @@ func (m *AL2023) createMinimalNodeConfig() (*nodeadm.NodeConfig, error) {
 	}
 
 	clusterStatus := m.cfg.Status
+	var serviceCIDR string
+	if clusterStatus.KubernetesNetworkConfig.ServiceIPv6CIDR != "" {
+		serviceCIDR = clusterStatus.KubernetesNetworkConfig.ServiceIPv6CIDR
+	} else {
+		serviceCIDR = clusterStatus.KubernetesNetworkConfig.ServiceIPv4CIDR
+	}
+
 	return &nodeadm.NodeConfig{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       nodeadmapi.KindNodeConfig,
@@ -143,7 +143,7 @@ func (m *AL2023) createMinimalNodeConfig() (*nodeadm.NodeConfig, error) {
 				Name:                 m.cfg.Metadata.Name,
 				APIServerEndpoint:    clusterStatus.Endpoint,
 				CertificateAuthority: clusterStatus.CertificateAuthorityData,
-				CIDR:                 clusterStatus.KubernetesNetworkConfig.ServiceIPv4CIDR,
+				CIDR:                 serviceCIDR,
 			},
 			Kubelet: kubeletOptions,
 		},

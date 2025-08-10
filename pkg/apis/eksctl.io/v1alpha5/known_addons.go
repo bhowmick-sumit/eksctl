@@ -5,6 +5,8 @@ import "slices"
 var KnownAddons = map[string]struct {
 	IsDefault             bool
 	CreateBeforeNodeGroup bool
+	IsDefaultAutoMode     bool
+	ExcludedRegions       []string
 }{
 	VPCCNIAddon: {
 		IsDefault:             true,
@@ -23,13 +25,30 @@ var KnownAddons = map[string]struct {
 	},
 	AWSEBSCSIDriverAddon: {},
 	AWSEFSCSIDriverAddon: {},
+	MetricsServerAddon: {
+		IsDefault:             true,
+		CreateBeforeNodeGroup: true,
+		IsDefaultAutoMode:     true,
+		ExcludedRegions: []string{
+			RegionCNNorthwest1,
+			RegionCNNorth1,
+			RegionUSISOEast1,
+			RegionUSISOWest1,
+			RegionUSISOBEast1,
+			RegionUSGovWest1,
+			RegionUSGovEast1,
+			RegionUSISOFEast1,
+			RegionUSISOFSouth1,
+			RegionEUISOEWest1,
+		},
+	},
 }
 
-// HasDefaultAddons reports whether addons contains at least one default addon.
-func HasDefaultAddons(addons []*Addon) bool {
+// HasDefaultNonAutoAddon reports whether addons contains at least one non-auto mode default addon
+func HasDefaultNonAutoAddon(addons []*Addon) bool {
 	for _, addon := range addons {
 		addonConfig, ok := KnownAddons[addon.Name]
-		if ok && addonConfig.IsDefault {
+		if ok && addonConfig.IsDefault && !addonConfig.IsDefaultAutoMode {
 			return true
 		}
 	}

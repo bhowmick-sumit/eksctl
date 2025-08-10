@@ -3,11 +3,11 @@ package builder
 import (
 	"fmt"
 
-	gfn "goformation/v4/cloudformation"
-	gfnevents "goformation/v4/cloudformation/events"
-	gfniam "goformation/v4/cloudformation/iam"
-	gfnsqs "goformation/v4/cloudformation/sqs"
-	gfnt "goformation/v4/cloudformation/types"
+	gfn "github.com/weaveworks/eksctl/pkg/goformation/cloudformation"
+	gfnevents "github.com/weaveworks/eksctl/pkg/goformation/cloudformation/events"
+	gfniam "github.com/weaveworks/eksctl/pkg/goformation/cloudformation/iam"
+	gfnsqs "github.com/weaveworks/eksctl/pkg/goformation/cloudformation/sqs"
+	gfnt "github.com/weaveworks/eksctl/pkg/goformation/cloudformation/types"
 
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -124,7 +124,7 @@ func (k *KarpenterResourceSet) addResourcesForKarpenter() error {
 	managedPolicyNames := sets.New[string]()
 	managedPolicyNames.Insert(iamPolicyAmazonEKSWorkerNodePolicy,
 		iamPolicyAmazonEKSCNIPolicy,
-		iamPolicyAmazonEC2ContainerRegistryReadOnly,
+		iamPolicyAmazonEC2ContainerRegistryPullOnly,
 		iamPolicyAmazonSSMManagedInstanceCore,
 	)
 	k.Template().Mappings[servicePrincipalPartitionMapName] = api.Partitions.ServicePrincipalPartitionMappings()

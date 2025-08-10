@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"io"
 	"mime/multipart"
 	"strings"
@@ -14,17 +14,16 @@ import (
 	nodeadm "github.com/awslabs/amazon-eks-ami/nodeadm/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/pkg/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/yaml"
 
 	api "github.com/weaveworks/eksctl/pkg/apis/eksctl.io/v1alpha5"
 	"github.com/weaveworks/eksctl/pkg/nodebootstrap"
-	"github.com/weaveworks/eksctl/pkg/nodebootstrap/assets"
 )
 
 type al2023Entry struct {
+	overrideClusterSettings   func(*api.ClusterConfig)
 	overrideNodegroupSettings func(api.NodePool)
 	expectedUserData          string
 }
@@ -49,18 +48,24 @@ var _ = DescribeTable("Unmanaged AL2023", func(e al2023Entry) {
 	Expect(actual).To(Equal(e.expectedUserData))
 },
 	Entry("default", al2023Entry{
-		expectedUserData: wrapMIMEParts(xTablesLock + nodeConfig),
+		expectedUserData: wrapMIMEParts(nodeConfig),
 	}),
 	Entry("efa enabled", al2023Entry{
 		overrideNodegroupSettings: func(np api.NodePool) {
 			np.BaseNodeGroup().EFAEnabled = aws.Bool(true)
 		},
-		expectedUserData: wrapMIMEParts(xTablesLock + efaScript + nodeConfig),
+		expectedUserData: wrapMIMEParts(nodeConfig),
 	}),
 )
 
 var _ = DescribeTable("Managed AL2023", func(e al2023Entry) {
-	cfg, dns := makeDefaultClusterSettings()
+	cfg, _ := makeDefaultClusterSettings()
+	if e.overrideClusterSettings != nil {
+		e.overrideClusterSettings(cfg)
+	}
+	dns, err := nodebootstrap.GetClusterDNS(cfg)
+	Expect(err).NotTo(HaveOccurred())
+
 	mng := api.NewManagedNodeGroup()
 	makeDefaultNPSettings(mng)
 	mng.Taints = append(mng.Taints, api.NodeGroupTaint{
@@ -83,27 +88,23 @@ var _ = DescribeTable("Managed AL2023", func(e al2023Entry) {
 	actual := strings.ReplaceAll(string(decoded), "\r\n", "\n")
 	Expect(actual).To(Equal(e.expectedUserData))
 },
-	Entry("native AMI", al2023Entry{
-		expectedUserData: wrapMIMEParts(xTablesLock),
-	}),
-	Entry("native AMI && EFA enabled", al2023Entry{
-		overrideNodegroupSettings: func(np api.NodePool) {
-			np.BaseNodeGroup().EFAEnabled = aws.Bool(true)
-		},
-		expectedUserData: wrapMIMEParts(xTablesLock + efaCloudhook),
-	}),
+	Entry("native AMI", al2023Entry{}),
 	Entry("custom AMI", al2023Entry{
 		overrideNodegroupSettings: func(np api.NodePool) {
 			np.BaseNodeGroup().AMI = "ami-xxxx"
 		},
-		expectedUserData: wrapMIMEParts(xTablesLock + managedNodeConfig),
+		expectedUserData: wrapMIMEParts(managedNodeConfig),
 	}),
-	Entry("custom AMI && EFA enabled", al2023Entry{
+	Entry("custom AMI IPv6", al2023Entry{
+		overrideClusterSettings: func(cc *api.ClusterConfig) {
+			cc.Status.KubernetesNetworkConfig.IPFamily = api.IPV6Family
+			cc.Status.KubernetesNetworkConfig.ServiceIPv6CIDR = "fd40:6404:f93b::/108"
+			cc.Status.KubernetesNetworkConfig.ServiceIPv4CIDR = ""
+		},
 		overrideNodegroupSettings: func(np api.NodePool) {
 			np.BaseNodeGroup().AMI = "ami-xxxx"
-			np.BaseNodeGroup().EFAEnabled = aws.Bool(true)
 		},
-		expectedUserData: wrapMIMEParts(xTablesLock + efaCloudhook + managedNodeConfig),
+		expectedUserData: wrapMIMEParts(managedNodeConfigIPv6),
 	}),
 )
 
@@ -380,27 +381,6 @@ Content-Type: multipart/mixed; boundary=//
 `
 	}
 
-	xTablesLock = fmt.Sprintf(`--//
-Content-Type: text/x-shellscript
-Content-Type: charset="us-ascii"
-
-%s
-`, assets.AL2023XTablesLock)
-
-	efaCloudhook = fmt.Sprintf(`--//
-Content-Type: text/cloud-boothook
-Content-Type: charset="us-ascii"
-
-%s
-`, assets.EfaManagedAL2023Boothook)
-
-	efaScript = fmt.Sprintf(`--//
-Content-Type: text/x-shellscript
-Content-Type: charset="us-ascii"
-
-%s
-`, assets.EfaAl2023Sh)
-
 	nodeConfig = `--//
 Content-Type: application/node.eks.aws
 
@@ -423,6 +403,31 @@ spec:
       - 10.100.0.10
     flags:
     - --node-labels=alpha.eksctl.io/nodegroup-name=al2023-mng-test
+
+`
+	managedNodeConfigIPv6 = `--//
+Content-Type: application/node.eks.aws
+
+apiVersion: node.eks.aws/v1alpha1
+kind: NodeConfig
+metadata:
+  creationTimestamp: null
+spec:
+  cluster:
+    apiServerEndpoint: https://test.xxx.us-west-2.eks.amazonaws.com
+    certificateAuthority: dGVzdCBDQQ==
+    cidr: fd40:6404:f93b::/108
+    name: al2023-test
+  containerd: {}
+  instance:
+    localStorage: {}
+  kubelet:
+    config:
+      clusterDNS:
+      - fd40:6404:f93b::a
+    flags:
+    - --node-labels=alpha.eksctl.io/nodegroup-name=al2023-mng-test
+    - --register-with-taints=special=true:NoSchedule
 
 `
 	managedNodeConfig = `--//

@@ -16,90 +16,43 @@ import (
 
 	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
-
+	"github.com/weaveworks/eksctl/pkg/awsapi"
+	"github.com/weaveworks/eksctl/pkg/utils/taints"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-
-	"github.com/weaveworks/eksctl/pkg/awsapi"
-	"github.com/weaveworks/eksctl/pkg/utils/taints"
 )
 
-// Values for `KubernetesVersion`
-// All valid values should go in this block
 const (
-	Version1_23 = "1.23"
-
-	Version1_24 = "1.24"
-
-	Version1_25 = "1.25"
-
-	Version1_26 = "1.26"
-
-	Version1_27 = "1.27"
-
-	Version1_28 = "1.28"
-
-	Version1_29 = "1.29"
-
-	Version1_30 = "1.30"
-
-	Version1_31 = "1.31"
-
-	// DefaultVersion (default)
-	DefaultVersion = Version1_30
-
-	LatestVersion = Version1_31
-
+	Version1_10                  = "1.10"
+	Version1_11                  = "1.11"
+	Version1_12                  = "1.12"
+	Version1_13                  = "1.13"
+	Version1_14                  = "1.14"
+	Version1_15                  = "1.15"
+	Version1_16                  = "1.16"
+	Version1_17                  = "1.17"
+	Version1_18                  = "1.18"
+	Version1_19                  = "1.19"
+	Version1_20                  = "1.20"
+	Version1_21                  = "1.21"
+	Version1_22                  = "1.22"
+	Version1_23                  = "1.23"
+	Version1_24                  = "1.24"
+	Version1_25                  = "1.25"
+	Version1_26                  = "1.26"
+	Version1_27                  = "1.27"
+	Version1_28                  = "1.28"
+	Version1_29                  = "1.29"
+	Version1_30                  = "1.30"
+	Version1_31                  = "1.31"
+	Version1_32                  = "1.32"
+	Version1_33                  = "1.33"
 	DockershimDeprecationVersion = Version1_24
-)
-
-// No longer supported versions
-const (
-	// Version1_10 represents Kubernetes version 1.10.x
-	Version1_10 = "1.10"
-
-	// Version1_11 represents Kubernetes version 1.11.x
-	Version1_11 = "1.11"
-
-	// Version1_12 represents Kubernetes version 1.12.x
-	Version1_12 = "1.12"
-
-	// Version1_13 represents Kubernetes version 1.13.x
-	Version1_13 = "1.13"
-
-	// Version1_14 represents Kubernetes version 1.14.x
-	Version1_14 = "1.14"
-
-	// Version1_15 represents Kubernetes version 1.15.x
-	Version1_15 = "1.15"
-
-	// Version1_16 represents Kubernetes version 1.16.x
-	Version1_16 = "1.16"
-
-	// Version1_17 represents Kubernetes version 1.17.x
-	Version1_17 = "1.17"
-
-	// Version1_18 represents Kubernetes version 1.18.x
-	Version1_18 = "1.18"
-
-	// Version1_19 represents Kubernetes version 1.19.x
-	Version1_19 = "1.19"
-
-	// Version1_20 represents Kubernetes version 1.20.x
-	Version1_20 = "1.20"
-
-	// Version1_21 represents Kubernetes version 1.21.x
-	Version1_21 = "1.21"
-
-	// Version1_22 represents Kubernetes version 1.22.x
-	Version1_22 = "1.22"
-)
-
-// Not yet supported versions
-const (
-	// Version1_32 represents Kubernetes version 1.32.x
-	Version1_32 = "1.32"
+	AmazonLinux2EOLVersion       = Version1_33
+	//TODO: Remove this and replace with output from DescribeClusterVersions endpoint
+	// DefaultVersion (default)
+	DefaultVersion = Version1_32
 )
 
 const (
@@ -175,6 +128,9 @@ const (
 	// RegionAPSouthEast5 represents the Asia-Pacific South East Region Kuala Lumpur
 	RegionAPSouthEast5 = "ap-southeast-5"
 
+	// RegionAPSouthEast7 represents the Asia-Pacific South East Region Bangkok
+	RegionAPSouthEast7 = "ap-southeast-7"
+
 	// RegionAPSouth1 represents the Asia-Pacific South Region Mumbai
 	RegionAPSouth1 = "ap-south-1"
 
@@ -183,6 +139,9 @@ const (
 
 	// RegionAPEast1 represents the Asia Pacific Region Hong Kong
 	RegionAPEast1 = "ap-east-1"
+
+	// RegionAPEast2 represents the Asia Pacific Region Taipei
+	RegionAPEast2 = "ap-east-2"
 
 	// RegionMECentral1 represents the Middle East Region Dubai
 	RegionMECentral1 = "me-central-1"
@@ -217,8 +176,20 @@ const (
 	// RegionUSISOBEast1 represents the region US ISOB East (Ohio).
 	RegionUSISOBEast1 = "us-isob-east-1"
 
-	// RegionUSISOWest1 represents the region US ISOB West.
+	// RegionUSISOWest1 represents the region US ISO West.
 	RegionUSISOWest1 = "us-iso-west-1"
+
+	// RegionMXCentral1 represents the region of central Mexico
+	RegionMXCentral1 = "mx-central-1"
+
+	// RegionUSISOFSouth1 represents the region US ISOF South.
+	RegionUSISOFSouth1 = "us-isof-south-1"
+
+	// RegionUSISOFSouth1 represents the region US ISOF East.
+	RegionUSISOFEast1 = "us-isof-east-1"
+
+	// Region represents the region EU ISOE West.
+	RegionEUISOEWest1 = "eu-isoe-west-1"
 
 	// DefaultRegion defines the default region, where to deploy the EKS cluster
 	DefaultRegion = RegionUSWest2
@@ -231,10 +202,12 @@ const (
 	DefaultNodeImageFamily         = NodeImageFamilyAmazonLinux2
 	NodeImageFamilyAmazonLinux2023 = "AmazonLinux2023"
 	NodeImageFamilyAmazonLinux2    = "AmazonLinux2"
+	NodeImageFamilyUbuntuPro2404   = "UbuntuPro2404"
+	NodeImageFamilyUbuntu2404      = "Ubuntu2404"
 	NodeImageFamilyUbuntuPro2204   = "UbuntuPro2204"
 	NodeImageFamilyUbuntu2204      = "Ubuntu2204"
+	NodeImageFamilyUbuntuPro2004   = "UbuntuPro2004"
 	NodeImageFamilyUbuntu2004      = "Ubuntu2004"
-	NodeImageFamilyUbuntu1804      = "Ubuntu1804"
 	NodeImageFamilyBottlerocket    = "Bottlerocket"
 
 	NodeImageFamilyWindowsServer2019CoreContainer = "WindowsServer2019CoreContainer"
@@ -345,6 +318,9 @@ const (
 	// eksResourceAccountAPEast1 defines the AWS EKS account ID that provides node resources in ap-east-1 region
 	eksResourceAccountAPEast1 = "800184023465"
 
+	// eksResourceAccountAPEast2 defines the AWS EKS account ID that provides node resources in ap-east-2 region
+	eksResourceAccountAPEast2 = "533267051163"
+
 	// eksResourceAccountCAWest1 defines the AWS EKS account ID that provides node resources in ca-west-1 region
 	eksResourceAccountCAWest1 = "761377655185"
 
@@ -393,6 +369,9 @@ const (
 	// eksResourceAccountAPSouthEast5 defines the AWS EKS account ID that provides node resources in ap-southeast-5
 	eksResourceAccountAPSouthEast5 = "151610086707"
 
+	// eksResourceAccountAPSouthEast7 defines the AWS EKS account ID that provides node resources in ap-southeast-7
+	eksResourceAccountAPSouthEast7 = "121268973566"
+
 	// eksResourceAccountUSISOEast1 defines the AWS EKS account ID that provides node resources in us-iso-east-1
 	eksResourceAccountUSISOEast1 = "725322719131"
 
@@ -401,6 +380,18 @@ const (
 
 	// eksResourceAccountUSISOWest1 defines the AWS EKS account ID that provides node resources in us-iso-west-1
 	eksResourceAccountUSISOWest1 = "608367168043"
+
+	// eksResourceAccountMXCentral1 defines the AWS EKS account ID that provides node resources in mx-central-1
+	eksResourceAccountMXCentral1 = "730335286997"
+
+	// eksResourceAccountUSISOFSouth1 defines the AWS EKS account ID that provides node resources in us-isof-south-1
+	eksResourceAccountUSISOFSouth1 = "676585237158"
+
+	// eksResourceAccountUSISOFEast1 defines the AWS EKS account ID that provides node resources in us-isof-east-1
+	eksResourceAccountUSISOFEast1 = "171035529773"
+
+	// eksResourceAccountEUISOEWest1 defines the AWS EKS account ID that provides node resources in eu-isoe-west-1
+	eksResourceAccountEUISOEWest1 = "249663109785"
 )
 
 // Values for `VolumeType`
@@ -529,9 +520,11 @@ func SupportedRegions() []string {
 		RegionAPSouthEast3,
 		RegionAPSouthEast4,
 		RegionAPSouthEast5,
+		RegionAPSouthEast7,
 		RegionAPSouth1,
 		RegionAPSouth2,
 		RegionAPEast1,
+		RegionAPEast2,
 		RegionMECentral1,
 		RegionMESouth1,
 		RegionSAEast1,
@@ -544,63 +537,11 @@ func SupportedRegions() []string {
 		RegionUSISOEast1,
 		RegionUSISOBEast1,
 		RegionUSISOWest1,
+		RegionMXCentral1,
+		RegionUSISOFSouth1,
+		RegionUSISOFEast1,
+		RegionEUISOEWest1,
 	}
-}
-
-// DeprecatedVersions are the versions of Kubernetes that EKS used to support
-// but no longer does. See also:
-// https://docs.aws.amazon.com/eks/latest/userguide/kubernetes-versions.html
-func DeprecatedVersions() []string {
-	return []string{
-		Version1_10,
-		Version1_11,
-		Version1_12,
-		Version1_13,
-		Version1_14,
-		Version1_15,
-		Version1_16,
-		Version1_17,
-		Version1_18,
-		Version1_19,
-		Version1_20,
-		Version1_21,
-		Version1_22,
-	}
-}
-
-// IsDeprecatedVersion returns true if the given Kubernetes version has been deprecated in EKS
-func IsDeprecatedVersion(version string) bool {
-	for _, v := range DeprecatedVersions() {
-		if version == v {
-			return true
-		}
-	}
-	return false
-}
-
-// SupportedVersions are the versions of Kubernetes that EKS supports
-func SupportedVersions() []string {
-	return []string{
-		Version1_23,
-		Version1_24,
-		Version1_25,
-		Version1_26,
-		Version1_27,
-		Version1_28,
-		Version1_29,
-		Version1_30,
-		Version1_31,
-	}
-}
-
-// IsSupportedVersion returns true if the given Kubernetes version is supported by eksctl and EKS
-func IsSupportedVersion(version string) bool {
-	for _, v := range SupportedVersions() {
-		if version == v {
-			return true
-		}
-	}
-	return false
 }
 
 // SupportedNodeVolumeTypes are the volume types that can be used for a node root volume
@@ -620,10 +561,12 @@ func SupportedAMIFamilies() []string {
 	return []string{
 		NodeImageFamilyAmazonLinux2023,
 		NodeImageFamilyAmazonLinux2,
+		NodeImageFamilyUbuntuPro2404,
+		NodeImageFamilyUbuntu2404,
 		NodeImageFamilyUbuntuPro2204,
 		NodeImageFamilyUbuntu2204,
+		NodeImageFamilyUbuntuPro2004,
 		NodeImageFamilyUbuntu2004,
-		NodeImageFamilyUbuntu1804,
 		NodeImageFamilyBottlerocket,
 		NodeImageFamilyWindowsServer2019CoreContainer,
 		NodeImageFamilyWindowsServer2019FullContainer,
@@ -649,6 +592,8 @@ func EKSResourceAccountID(region string) string {
 	switch region {
 	case RegionAPEast1:
 		return eksResourceAccountAPEast1
+	case RegionAPEast2:
+		return eksResourceAccountAPEast2
 	case RegionCAWest1:
 		return eksResourceAccountCAWest1
 	case RegionMECentral1:
@@ -679,6 +624,8 @@ func EKSResourceAccountID(region string) string {
 		return eksResourceAccountAPSouthEast4
 	case RegionAPSouthEast5:
 		return eksResourceAccountAPSouthEast5
+	case RegionAPSouthEast7:
+		return eksResourceAccountAPSouthEast7
 	case RegionILCentral1:
 		return eksResourceAccountILCentral1
 	case RegionUSISOEast1:
@@ -687,6 +634,14 @@ func EKSResourceAccountID(region string) string {
 		return eksResourceAccountUSISOBEast1
 	case RegionUSISOWest1:
 		return eksResourceAccountUSISOWest1
+	case RegionMXCentral1:
+		return eksResourceAccountMXCentral1
+	case RegionUSISOFSouth1:
+		return eksResourceAccountUSISOFSouth1
+	case RegionUSISOFEast1:
+		return eksResourceAccountUSISOFEast1
+	case RegionEUISOEWest1:
+		return eksResourceAccountEUISOEWest1
 	default:
 		return eksResourceAccountStandard
 	}
@@ -700,9 +655,12 @@ type ClusterMeta struct {
 	// the AWS region hosting this cluster
 	// +required
 	Region string `json:"region"`
-	// Valid variants are `KubernetesVersion` constants
+	// Version use `./eksctl utils describe-cluster-versions` to get the list of supported versions
 	// +optional
 	Version string `json:"version,omitempty"`
+	// When updating cluster version, provide the force flag to override upgrade-blocking insights
+	// +optional
+	ForceUpdateVersion *bool `json:"forceUpdateVersion,omitempty"`
 	// Tags are used to tag AWS resources created by eksctl
 	// +optional
 	Tags map[string]string `json:"tags,omitempty"`
@@ -719,8 +677,10 @@ type KubernetesNetworkConfig struct {
 	// Valid variants are `IPFamily` constants
 	// +optional
 	IPFamily string `json:"ipFamily,omitempty"`
-	// ServiceIPv4CIDR is the CIDR range from where `ClusterIP`s are assigned
+	// ServiceIPv4CIDR is the IPv4 CIDR range from where `ClusterIP`s are assigned
 	ServiceIPv4CIDR string `json:"serviceIPv4CIDR,omitempty"`
+	// ServiceIPv6CIDR is the IPv6 CIDR range from where `ClusterIP`s are assigned
+	ServiceIPv6CIDR string `json:"serviceIPv6CIDR,omitempty"`
 }
 
 func (k *KubernetesNetworkConfig) IPv6Enabled() bool {
@@ -797,7 +757,7 @@ func (r *RemoteNetworkConfig) ToRemoteNetworksPool() []string {
 }
 
 func (r *RemoteNetworkConfig) HasRemoteNodesEnabled() bool {
-	return r.RemoteNodeNetworks != nil && len(r.RemoteNodeNetworks) > 0
+	return len(r.RemoteNodeNetworks) > 0
 }
 
 func (c *ClusterConfig) HasRemoteNetworkingConfigured() bool {
@@ -1200,13 +1160,18 @@ func (c *ClusterConfig) IPv6Enabled() bool {
 
 // SetClusterState updates the cluster state and populates the ClusterStatus using *eks.Cluster.
 func (c *ClusterConfig) SetClusterState(cluster *ekstypes.Cluster) error {
-	if networkConfig := cluster.KubernetesNetworkConfig; networkConfig != nil && networkConfig.ServiceIpv4Cidr != nil {
-		c.Status.KubernetesNetworkConfig = &KubernetesNetworkConfig{
-			ServiceIPv4CIDR: *networkConfig.ServiceIpv4Cidr,
+	if networkConfig := cluster.KubernetesNetworkConfig; networkConfig != nil {
+		knc := &KubernetesNetworkConfig{}
+		if networkConfig.ServiceIpv4Cidr != nil {
+			knc.IPFamily = IPV4Family
+			knc.ServiceIPv4CIDR = aws.ToString(networkConfig.ServiceIpv4Cidr)
 		}
-		c.KubernetesNetworkConfig = &KubernetesNetworkConfig{
-			ServiceIPv4CIDR: aws.ToString(cluster.KubernetesNetworkConfig.ServiceIpv4Cidr),
+		if networkConfig.ServiceIpv6Cidr != nil {
+			knc.IPFamily = IPV6Family
+			knc.ServiceIPv6CIDR = aws.ToString(networkConfig.ServiceIpv6Cidr)
 		}
+		c.KubernetesNetworkConfig = knc
+		c.Status.KubernetesNetworkConfig = knc
 	}
 	data, err := base64.StdEncoding.DecodeString(*cluster.CertificateAuthority.Data)
 	if err != nil {
@@ -1378,6 +1343,10 @@ type NodeGroup struct {
 	// The cluster should have been created with all of the local zones specified in this field.
 	// +optional
 	LocalZones []string `json:"localZones,omitempty"`
+
+	// EnclaveEnabled determines if the EC2 instance will be Nitro enclave enabled
+	// +optional
+	EnclaveEnabled *bool `json:"enclaveEnabled,omitempty"`
 }
 
 // GetContainerRuntime returns the container runtime.
@@ -1703,7 +1672,7 @@ type NodeGroupBase struct {
 	// +optional
 	Labels map[string]string `json:"labels,omitempty"`
 	// Enable [private
-	// networking](/usage/vpc-networking/#use-private-subnets-for-initial-nodegroup)
+	// networking](/usage/vpc-subnet-settings/#use-private-subnets-for-initial-nodegroup)
 	// for nodegroup
 	// +optional
 	PrivateNetworking bool `json:"privateNetworking"`
@@ -1803,6 +1772,10 @@ type NodeGroupBase struct {
 	// CapacityReservation defines reservation policy for a nodegroup
 	CapacityReservation *CapacityReservation `json:"capacityReservation,omitempty"`
 
+	// InstanceMarketOptions describes the market (purchasing) option for the instances
+	// +optional
+	InstanceMarketOptions *InstanceMarketOptions `json:"instanceMarketOptions,omitempty"`
+
 	// OutpostARN specifies the Outpost ARN in which the nodegroup should be created.
 	// +optional
 	OutpostARN string `json:"outpostARN,omitempty"`
@@ -1821,6 +1794,12 @@ type CapacityReservation struct {
 type CapacityReservationTarget struct {
 	CapacityReservationID               *string `json:"capacityReservationID,omitempty"`
 	CapacityReservationResourceGroupARN *string `json:"capacityReservationResourceGroupARN,omitempty"`
+}
+
+// InstanceMarketOptions describes the market (purchasing) option for the instances
+type InstanceMarketOptions struct {
+	// MarketType specifies the market type for the instances
+	MarketType *string `json:"marketType,omitempty"`
 }
 
 // Placement specifies placement group information
@@ -2039,12 +2018,20 @@ type InstanceSelector struct {
 	// GPUs specifies the number of GPUs.
 	// It can be set to 0 to select non-GPU instance types.
 	GPUs *int `json:"gpus,omitempty"`
+	// NeuronDevices specifies the number of Neuron device Accelerators.
+	// It can be set to 0 to select non-Accelerator instance types.
+	NeuronDevices *int32 `json:"neuron_devices,omitempty"`
 	// CPU Architecture of the EC2 instance type.
 	// Valid variants are:
 	// `"x86_64"`
 	// `"amd64"`
 	// `"arm64"`
 	CPUArchitecture string `json:"cpuArchitecture,omitempty"`
+	// List of allowed instance types to select from w/ regex syntax (Example: m[3-5]\\.*)
+	Allow *string `json:"allow,omitempty"`
+
+	// List of instance types which should be excluded w/ regex syntax (Example: m[1-2]\\.*)
+	Deny *string `json:"deny,omitempty"`
 }
 
 // IsZero returns true if all fields hold a zero value

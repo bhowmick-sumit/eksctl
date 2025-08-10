@@ -2,9 +2,9 @@
 package fakes
 
 import (
-	"goformation/v4/cloudformation/types"
 	"sync"
 
+	"github.com/weaveworks/eksctl/pkg/goformation/cloudformation/types"
 	"github.com/weaveworks/eksctl/pkg/vpc"
 )
 
